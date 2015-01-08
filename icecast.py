@@ -1,0 +1,101 @@
+#! /usr/bin/python
+# -*- coding: iso-8859-1 -*-
+
+# IceCast2 stats plugin for Munin
+# Author: Matt Ribbins (mattyribbo.co.uk)
+
+# Redistribution and use in source and binary forms, with or without modification,
+# are permitted provided that the following conditions are met:
+# 1. Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+#################
+# Configuration #
+#################
+# Hostname of Icecast server
+# Just canonical name, no http:// nor ending /, include port number if required
+host = "listen.gsb.fm:8888"
+# Username and password to the administration panel
+username = "admin"
+password = "1234"
+
+#######################
+# Magic happens below #
+#######################
+import os.path, time, sys
+import requests
+from xml.dom import minidom
+
+host = "http://" + host + "/admin/stats"
+
+def ic2xml():
+    # Get the XML with all the stats,
+    req = requests.get(host, auth=(username, password))
+
+    xmldoc = minidom.parseString(req.text)
+    xmldoc = xmldoc.firstChild
+
+    total_listeners = xmldoc.getElementsByTagName("listeners")[0].firstChild.nodeValue
+    total_sources = xmldoc.getElementsByTagName("sources")[0].firstChild.nodeValue
+
+    sources = xmldoc.getElementsByTagName("source")
+    sourcelist = {}
+    for source in sources:
+        mount = source.getAttribute("mount")
+        listeners = source.getElementsByTagName("listeners")[0].firstChild.nodeValue
+        name = source.getElementsByTagName("server_name")[0].firstChild.nodeValue
+        mount = mount.replace("-", "_").replace(".", "_")
+        sourcelist[mount[1:]] = (listeners, name)
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "autoconf":
+            print("yes")
+        elif sys.argv[1] == "dump":
+            print(req.text)
+        elif len(sys.argv) == 1 or sys.argv[1] != "config":
+            print(("totallisteners.value" + total_listeners))
+            print(("totalsources.value " + total_sources))
+            sourcesort = list(sourcelist.keys())
+            sourcesort.sort()
+            for source in sourcesort:
+                listeners, name = sourcelist[source]
+                print((source + ".value " + listeners))
+        elif sys.argv[1] == "config":
+            print ("graph_title Total number of listeners")
+            print ("graph_vlabel listeners")
+            print ("graph_category Icecast")
+            print ("totallisteners.label Total number of listeners")
+            print ("totalsources.label Totalt number of sources")
+            sourcesort = list(sourcelist.keys())
+            sourcesort.sort()
+            for source in sourcesort:
+                listeners, name = sourcelist[source]
+                print((source + ".label /" + source))
+        else:
+            print((sys.argv[1]))
+    else:
+        print(("totallisteners.value " + total_listeners))
+        print(("totalsources.value " + total_sources))
+        sourcesort = list(sourcelist.keys())
+        sourcesort.sort()
+        for source in sourcesort:
+            listeners, name = sourcelist[source]
+            print((source + ".value " + listeners))
+
+if __name__ == "__main__":
+    ic2xml()
